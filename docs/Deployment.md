@@ -193,8 +193,7 @@ conda install ffmpeg -y
 conda activate xiaozhi-esp32-server
 # 进入到你的项目根目录，再进入main/xiaozhi-server
 cd main/xiaozhi-server
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install -r requirements.txt
+uv sync
 ```
 
 ## 3.下载语音识别模型文件
