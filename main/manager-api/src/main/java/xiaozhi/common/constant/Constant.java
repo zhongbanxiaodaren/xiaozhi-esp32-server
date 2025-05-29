@@ -182,6 +182,7 @@ public interface Constant {
          */
         SYSTEM_ENABLE_MOBILE_REGISTER("system.enable_mobile_register");
 
+
         private String value;
 
         SysMSMParam(String value) {
@@ -190,6 +191,15 @@ public interface Constant {
 
         public String getValue() {
             return value;
+        }
+
+        /**
+         * 获取阿里云国际短信发送要求的各国际的SenderID
+         * @param countryPhoneCode 国际手机代码
+         * @return key
+         */
+        public static String getSenderID(String countryPhoneCode){
+            return "aliyun.sms.sender_id." + countryPhoneCode;
         }
     }
 

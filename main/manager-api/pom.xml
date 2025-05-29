@@ -216,7 +216,20 @@
             <artifactId>okio</artifactId>
             <version>${okio-version}</version>
         </dependency>
+        <!-- 阿里云境外短信发送sdk-->
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>dysmsapi20180501</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+        <!--  处理手机号码工具   -->
+        <dependency>
+            <groupId>com.googlecode.libphonenumber</groupId>
+            <artifactId>libphonenumber</artifactId>
+            <version>8.13.3</version>
+        </dependency>
     </dependencies>
+
 
     <!-- 阿里云maven仓库 -->
     <repositories>
