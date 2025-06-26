@@ -163,13 +163,15 @@ class TTSProviderBase(ABC):
             else:
                 sentence_id = str(uuid.uuid4()).replace("-", "")
                 conn.sentence_id = sentence_id
-        self.tts_text_queue.put(
-            TTSMessageDTO(
-                sentence_id=sentence_id,
-                sentence_type=SentenceType.FIRST,
-                content_type=ContentType.ACTION,
+        if getattr(conn, "is_first_tool_call", True):
+            self.tts_text_queue.put(
+                TTSMessageDTO(
+                    sentence_id=sentence_id,
+                    sentence_type=SentenceType.FIRST,
+                    content_type=ContentType.ACTION,
+                )
             )
-        )
+
         # 对于单句的文本，进行分段处理
         segments = re.split(r'([。！？!?；;\n])', content_detail)
         for seg in segments:
@@ -189,6 +191,7 @@ class TTSProviderBase(ABC):
                 content_type=ContentType.ACTION,
             )
         )
+        conn.is_first_tool_call = True
 
     async def open_audio_channels(self, conn):
         self.conn = conn

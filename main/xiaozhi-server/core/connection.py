@@ -153,6 +153,9 @@ class ConnectionHandler:
         # {"mcp":true} 表示启用MCP功能
         self.features = None
 
+        # 工具回复标记
+        self.is_first_tool_call = True
+
     async def handle_connection(self, ws):
         try:
             # 获取并验证headers
@@ -628,8 +631,8 @@ class ConnectionHandler:
                 )
                 memory_str = future.result()
 
-            self.sentence_id = str(uuid.uuid4().hex)
-
+            if not hasattr(self, 'sentence_id') or not self.sentence_id:
+                self.sentence_id = str(uuid.uuid4().hex)
 
             if self.intent_type == "function_call" and functions is not None:
                 # 使用支持functions的streaming接口
@@ -683,7 +686,7 @@ class ConnectionHandler:
             if content is not None and len(content) > 0:
                 if not tool_call_flag:
                     response_message.append(content)
-                    if text_index == 0:
+                    if text_index == 0 and self.is_first_tool_call:
                         self.tts.tts_text_queue.put(
                             TTSMessageDTO(
                                 sentence_id=self.sentence_id,
@@ -725,6 +728,25 @@ class ConnectionHandler:
                     )
             if not bHasError:
                 response_message.clear()
+                # 提示音
+                if self.is_first_tool_call:
+                    self.tts.tts_text_queue.put(
+                        TTSMessageDTO(
+                            sentence_id=self.sentence_id,
+                            sentence_type=SentenceType.FIRST,
+                            content_type=ContentType.ACTION,
+                        )
+                    )
+                    self.tts.tts_text_queue.put(
+                        TTSMessageDTO(
+                            sentence_id=self.sentence_id,
+                            sentence_type=SentenceType.MIDDLE,
+                            content_type=ContentType.TEXT,
+                            content_detail="正在调用工具请您稍等。"
+                        )
+                    )
+                    self.is_first_tool_call = False
+
                 self.logger.bind(tag=TAG).debug(
                     f"function_name={function_name}, function_id={function_id}, function_arguments={function_arguments}"
                 )
@@ -802,6 +824,7 @@ class ConnectionHandler:
                     content_type=ContentType.ACTION,
                 )
             )
+        self.is_first_tool_call = True
         self.llm_finish_task = True
         self.logger.bind(tag=TAG).debug(
             json.dumps(self.dialogue.get_llm_dialogue(), indent=4, ensure_ascii=False)

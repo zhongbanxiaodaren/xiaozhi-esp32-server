@@ -4,7 +4,7 @@ import uuid
 from core.handle.sendAudioHandle import send_stt_message
 from core.handle.helloHandle import checkWakeupWords
 from core.utils.util import remove_punctuation_and_length
-from core.providers.tts.dto.dto import ContentType
+from core.providers.tts.dto.dto import TTSMessageDTO, ContentType, SentenceType
 from core.utils.dialogue import Message
 from core.handle.mcpHandle import call_mcp_tool
 from plugins_func.register import Action, ActionResponse
@@ -76,6 +76,26 @@ async def process_intent_result(conn, intent_result, original_text):
                 f"检测到function_call格式的意图结果: {intent_data['function_call']['name']}"
             )
             function_name = intent_data["function_call"]["name"]
+
+            # 首次工具调用时发送提示
+            if function_name not in ["continue_chat", "play_music"] and getattr(conn, "is_first_tool_call", True):
+                conn.tts.tts_text_queue.put(
+                    TTSMessageDTO(
+                        sentence_id=conn.sentence_id,
+                        sentence_type=SentenceType.FIRST,
+                        content_type=ContentType.ACTION,
+                    )
+                )
+                conn.tts.tts_text_queue.put(
+                    TTSMessageDTO(
+                        sentence_id=conn.sentence_id,
+                        sentence_type=SentenceType.MIDDLE,
+                        content_type=ContentType.TEXT,
+                        content_detail="正在调用工具请您稍等。"
+                    )
+                )
+                conn.is_first_tool_call = False
+
             if function_name == "continue_chat":
                 return False
 
