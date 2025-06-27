@@ -1,6 +1,6 @@
 from aiohttp import web
 from config.logger import setup_logging
-
+# 添加一个测试的git备注
 
 class BaseHandler:
     def __init__(self, config: dict):
