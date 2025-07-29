@@ -24,7 +24,6 @@ from core.utils.modules_initialize import (
     initialize_asr,
 )
 from core.handle.reportHandle import report
-from core.utils.modules_initialize import initialize_voiceprint
 from core.providers.tts.default import DefaultTTS
 from concurrent.futures import ThreadPoolExecutor
 from core.utils.dialogue import Message, Dialogue
@@ -39,7 +38,8 @@ from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
 from config.logger import setup_logging, build_module_string, create_connection_logger
 from config.manage_api_client import DeviceNotFoundException, DeviceBindException
 from core.utils.prompt_manager import PromptManager
-
+from core.utils.voiceprint_provider import VoiceprintProvider
+from core.utils import textUtils
 
 TAG = __name__
 
@@ -109,6 +109,9 @@ class ConnectionHandler:
         self.memory = _memory
         self.intent = _intent
 
+        # 为每个连接单独管理声纹识别
+        self.voiceprint_provider = None
+
         # vad相关变量
         self.client_audio_buffer = bytearray()
         self.client_have_voice = False
@@ -129,6 +132,8 @@ class ConnectionHandler:
 
         # tts相关变量
         self.sentence_id = None
+        # 处理TTS响应没有文本返回
+        self.tts_MessageText = ""
 
         # iot相关变量
         self.iot_descriptors = {}
@@ -179,8 +184,13 @@ class ConnectionHandler:
                     await ws.send("端口正常，如需测试连接，请使用test_page.html")
                     await self.close(ws)
                     return
-            # 获取客户端ip地址
-            self.client_ip = ws.remote_address[0]
+            real_ip = self.headers.get("x-real-ip") or self.headers.get(
+                "x-forwarded-for"
+            )
+            if real_ip:
+                self.client_ip = real_ip.split(",")[0].strip()
+            else:
+                self.client_ip = ws.remote_address[0]
             self.logger.bind(tag=TAG).info(
                 f"{self.client_ip} conn - Headers: {self.headers}"
             )
@@ -269,7 +279,6 @@ class ConnectionHandler:
     async def _route_message(self, message):
         """消息路由"""
         if isinstance(message, str):
-            self.last_activity_time = time.time() * 1000
             await handleTextMessage(self, message)
         elif isinstance(message, bytes):
             if self.vad is None:
@@ -332,7 +341,7 @@ class ConnectionHandler:
                 self.config.get("selected_module", {})
             )
             self.logger = create_connection_logger(self.selected_module_str)
-            
+
             """初始化组件"""
             if self.config.get("prompt") is not None:
                 user_prompt = self.config["prompt"]
@@ -348,6 +357,10 @@ class ConnectionHandler:
                 self.vad = self._vad
             if self.asr is None:
                 self.asr = self._initialize_asr()
+
+            # 初始化声纹识别
+            self._initialize_voiceprint()
+
             # 打开语音识别通道
             asyncio.run_coroutine_threadsafe(
                 self.asr.open_audio_channels(self), self.loop
@@ -416,17 +429,19 @@ class ConnectionHandler:
             # 因为远程ASR，涉及到websocket连接和接收线程，需要每个连接一个实例
             asr = initialize_asr(self.config)
 
-        # 动态初始化声纹识别功能
+        return asr
+
+    def _initialize_voiceprint(self):
+        """为当前连接初始化声纹识别"""
         try:
-            success = initialize_voiceprint(asr, self.config)
-            if success:
+            voiceprint_config = self.config.get("voiceprint", {})
+            if voiceprint_config:
+                self.voiceprint_provider = VoiceprintProvider(voiceprint_config)
                 self.logger.bind(tag=TAG).info("声纹识别功能已在连接时动态启用")
             else:
                 self.logger.bind(tag=TAG).info("声纹识别功能未启用或配置不完整")
         except Exception as e:
-            self.logger.bind(tag=TAG).error(f"动态初始化声纹识别时发生错误: {str(e)}")
-
-        return asr
+            self.logger.bind(tag=TAG).warning(f"声纹识别初始化失败: {str(e)}")
 
     def _initialize_private_config(self):
         """如果是从配置文件获取，则进行二次实例化"""
@@ -487,6 +502,11 @@ class ConnectionHandler:
             self.config["LLM"] = private_config["LLM"]
             self.config["selected_module"]["LLM"] = private_config["selected_module"][
                 "LLM"
+            ]
+        if private_config.get("VLLM", None) is not None:
+            self.config["VLLM"] = private_config["VLLM"]
+            self.config["selected_module"]["VLLM"] = private_config["selected_module"][
+                "VLLM"
             ]
         if private_config.get("Memory", None) is not None:
             init_memory = True
@@ -704,6 +724,7 @@ class ConnectionHandler:
         function_arguments = ""
         content_arguments = ""
         self.client_abort = False
+        emotion_flag = True
         for response in llm_responses:
             if self.client_abort:
                 break
@@ -729,6 +750,15 @@ class ConnectionHandler:
                         function_arguments += tools_call[0].function.arguments
             else:
                 content = response
+
+            # 在llm回复中获取情绪表情，一轮对话只在开头获取一次
+            if emotion_flag and content is not None and content.strip():
+                asyncio.run_coroutine_threadsafe(
+                    textUtils.get_emotion(self, content),
+                    self.loop,
+                )
+                emotion_flag = False
+
             if content is not None and len(content) > 0:
                 if not tool_call_flag:
                     response_message.append(content)
@@ -766,9 +796,9 @@ class ConnectionHandler:
             if not bHasError:
                 # 如需要大模型先处理一轮，添加相关处理后的日志情况
                 if len(response_message) > 0:
-                    self.dialogue.put(
-                        Message(role="assistant", content="".join(response_message))
-                    )
+                    text_buff = "".join(response_message)
+                    self.tts_MessageText = text_buff
+                    self.dialogue.put(Message(role="assistant", content=text_buff))
                 response_message.clear()
                 self.logger.bind(tag=TAG).debug(
                     f"function_name={function_name}, function_id={function_id}, function_arguments={function_arguments}"
@@ -790,9 +820,9 @@ class ConnectionHandler:
 
         # 存储对话内容
         if len(response_message) > 0:
-            self.dialogue.put(
-                Message(role="assistant", content="".join(response_message))
-            )
+            text_buff = "".join(response_message)
+            self.tts_MessageText = text_buff
+            self.dialogue.put(Message(role="assistant", content=text_buff))
         if depth == 0:
             self.tts.tts_text_queue.put(
                 TTSMessageDTO(
@@ -869,9 +899,7 @@ class ConnectionHandler:
                     if self.executor is None:
                         continue
                     # 提交任务到线程池
-                    self.executor.submit(
-                        self._process_report, *item
-                    )
+                    self.executor.submit(self._process_report, *item)
                 except Exception as e:
                     self.logger.bind(tag=TAG).error(f"聊天记录上报线程异常: {e}")
             except queue.Empty:
