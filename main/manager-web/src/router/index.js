@@ -18,7 +18,7 @@ const routes = [
       return import('../views/roleConfig.vue')
     }
   },
-   {
+  {
     path: '/voice-print',
     name: 'VoicePrint',
     component: function () {
@@ -122,6 +122,13 @@ const routes = [
     name: 'ProviderManagement',
     component: function () {
       return import('../views/ProviderManagement.vue')
+    }
+  },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: function () {
+      return import('../views/chat.vue')
     }
   },
 ]
