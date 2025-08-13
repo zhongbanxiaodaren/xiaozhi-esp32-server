@@ -1,37 +1,59 @@
 <template>
   <div class="device-item">
-    <div style="display: flex;justify-content: space-between;">
-      <div style="font-weight: 700;font-size: 18px;text-align: left;color: #3d4566;">
+    <div style="display: flex; justify-content: space-between">
+      <div
+        style="
+          font-weight: 700;
+          font-size: 18px;
+          text-align: left;
+          color: #3d4566;
+        "
+      >
         {{ device.agentName }}
       </div>
       <div>
-        <img src="@/assets/home/delete.png" alt="" style="width: 18px;height: 18px;margin-right: 10px;"
-          @click.stop="handleDelete" />
-        <el-tooltip class="item" effect="dark" :content="device.systemPrompt" placement="top"
-          popper-class="custom-tooltip">
-          <img src="@/assets/home/info.png" alt="" style="width: 18px;height: 18px;" />
+        <img
+          src="@/assets/home/delete.png"
+          alt=""
+          style="width: 18px; height: 18px; margin-right: 10px"
+          @click.stop="handleDelete"
+        />
+        <el-tooltip
+          class="item"
+          effect="dark"
+          :content="device.systemPrompt"
+          placement="top"
+          popper-class="custom-tooltip"
+        >
+          <img
+            src="@/assets/home/info.png"
+            alt=""
+            style="width: 18px; height: 18px"
+          />
         </el-tooltip>
       </div>
     </div>
-    <div class="device-name">
-      语言模型：{{ device.llmModelName }}
-    </div>
+    <div class="device-name">语言模型：{{ device.llmModelName }}</div>
     <div class="device-name">
       音色模型：{{ device.ttsModelName }} ({{ device.ttsVoiceName }})
     </div>
-    <div style="display: flex;gap: 10px;align-items: center;">
-      <div class="settings-btn" @click="handleConfigure">
-        配置角色
-      </div>
-       <div class="settings-btn" @click="handleVoicePrint">
-        声纹识别
-      </div>
+    <div style="display: flex; gap: 10px; align-items: center">
+      <div class="settings-btn" @click="handleConfigure">配置角色</div>
+      <div class="settings-btn" @click="handleVoicePrint">声纹识别</div>
       <div class="settings-btn" @click="handleDeviceManage">
         设备管理({{ device.deviceCount }})
       </div>
-      <div class="settings-btn" @click="handleChatHistory"
-        :class="{ 'disabled-btn': device.memModelId === 'Memory_nomem' }">
-        <el-tooltip v-if="device.memModelId === 'Memory_nomem'" content="请先在“配置角色”界面开启记忆" placement="top">
+      <div class="settings-btn" @click="startChat">聊天</div>
+      <div
+        class="settings-btn"
+        @click="handleChatHistory"
+        :class="{ 'disabled-btn': device.memModelId === 'Memory_nomem' }"
+      >
+        <el-tooltip
+          v-if="device.memModelId === 'Memory_nomem'"
+          content="请先在“配置角色”界面开启记忆"
+          placement="top"
+        >
           <span>聊天记录</span>
         </el-tooltip>
         <span v-else>聊天记录</span>
@@ -45,55 +67,74 @@
 
 <script>
 export default {
-  name: 'DeviceItem',
+  name: "DeviceItem",
   props: {
-    device: { type: Object, required: true }
+    device: { type: Object, required: true },
   },
   data() {
-    return { switchValue: false }
+    return { switchValue: false };
   },
   computed: {
     formattedLastConnectedTime() {
-      if (!this.device.lastConnectedAt) return '暂未对话';
+      if (!this.device.lastConnectedAt) return "暂未对话";
 
       const lastTime = new Date(this.device.lastConnectedAt);
       const now = new Date();
       const diffMinutes = Math.floor((now - lastTime) / (1000 * 60));
 
       if (diffMinutes <= 1) {
-        return '刚刚';
+        return "刚刚";
       } else if (diffMinutes < 60) {
         return `${diffMinutes}分钟前`;
       } else if (diffMinutes < 24 * 60) {
         const hours = Math.floor(diffMinutes / 60);
         const minutes = diffMinutes % 60;
-        return `${hours}小时${minutes > 0 ? minutes + '分钟' : ''}前`;
+        return `${hours}小时${minutes > 0 ? minutes + "分钟" : ""}前`;
       } else {
         return this.device.lastConnectedAt;
       }
-    }
+    },
   },
   methods: {
+    startChat() {
+      console.log("chat start");
+      this.$router.push({
+        path: "/chat",
+        query: { agentId: this.device.agentId },
+      });
+    },
     handleDelete() {
-      this.$emit('delete', this.device.agentId)
+      this.$emit("delete", this.device.agentId);
     },
     handleConfigure() {
-      this.$router.push({ path: '/role-config', query: { agentId: this.device.agentId } });
+      this.$router.push({
+        path: "/role-config",
+        query: { agentId: this.device.agentId },
+      });
     },
     handleVoicePrint() {
-      this.$router.push({ path: '/voice-print', query: { agentId: this.device.agentId } });
+      this.$router.push({
+        path: "/voice-print",
+        query: { agentId: this.device.agentId },
+      });
     },
     handleDeviceManage() {
-      this.$router.push({ path: '/device-management', query: { agentId: this.device.agentId } });
+      this.$router.push({
+        path: "/device-management",
+        query: { agentId: this.device.agentId },
+      });
     },
     handleChatHistory() {
-      if (this.device.memModelId === 'Memory_nomem') {
-        return
+      if (this.device.memModelId === "Memory_nomem") {
+        return;
       }
-      this.$emit('chat-history', { agentId: this.device.agentId, agentName: this.device.agentName })
-    }
-  }
-}
+      this.$emit("chat-history", {
+        agentId: this.device.agentId,
+        agentName: this.device.agentName,
+      });
+    },
+  },
+};
 </script>
 <style scoped>
 .device-item {
