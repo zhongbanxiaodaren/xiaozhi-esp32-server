@@ -9,10 +9,6 @@
             <div class="tagline">提出问题，获取优化建议，沟通更高效</div>
           </div>
         </div>
-        <div class="system-status">
-          <div class="status-indicator"></div>
-          <span>系统运行中</span>
-        </div>
       </header>
 
       <div class="main-content">
@@ -853,6 +849,11 @@ export default {
                 this.messages.push({
                   sender: "user",
                   content: `${message.text}`,
+                });
+                this.$nextTick(() => {
+                  const container = this.$refs.scrollContainer;
+                  // 核心代码：滚动到底部
+                  container.scrollTop = container.scrollHeight;
                 });
                 // this.addMessage(`[语音识别] ${message.text}`, true);
               } else if (message.type === "llm") {
