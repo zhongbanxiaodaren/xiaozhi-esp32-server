@@ -1912,7 +1912,7 @@ export default {
 
               // 将Opus数据解码为PCM
               decodeOpusFrames: async (opusFrames) => {
-                if (!opusDecoder) {
+                if (!this.opusDecoder) {
                   console.log("Opus解码器未初始化，无法解码", "error");
                   return;
                 }
@@ -1925,23 +1925,26 @@ export default {
                     const frameData = this.opusDecoder.decode(frame);
                     if (frameData && frameData.length > 0) {
                       // 转换为Float32
-                      const floatData = convertInt16ToFloat32(frameData);
+                      const floatData = this.convertInt16ToFloat32(frameData);
                       decodedSamples.push(...floatData);
                     }
                   } catch (error) {
-                    log("Opus解码失败: " + error.message, "error");
+                    console.log("Opus解码失败: " + error.message, "error");
                   }
                 }
 
                 if (decodedSamples.length > 0) {
                   // 添加到解码队列
-                  this.queue.push(...decodedSamples);
-                  this.totalSamples += decodedSamples.length;
+                  this.streamingContext.queue.push(...decodedSamples);
+                  this.streamingContext.totalSamples += decodedSamples.length;
 
                   // 如果累积了至少0.2秒的音频，开始播放
-                  const minSamples = this.SAMPLE_RATE * MIN_AUDIO_DURATION;
-                  if (!this.playing && this.queue.length >= minSamples) {
-                    this.startPlaying();
+                  const minSamples = this.SAMPLE_RATE * this.MIN_AUDIO_DURATION;
+                  if (
+                    !this.streamingContext.playing &&
+                    this.streamingContext.queue.length >= minSamples
+                  ) {
+                    this.streamingContext.startPlaying();
                   }
                 } else {
                   console.log("没有成功解码的样本", "warning");
@@ -1950,27 +1953,35 @@ export default {
 
               // 开始播放音频
               startPlaying: () => {
-                if (this.playing || this.queue.length === 0) return;
+                if (
+                  this.streamingContext.playing ||
+                  this.streamingContext.queue.length === 0
+                )
+                  return;
 
-                this.playing = true;
+                this.streamingContext.playing = true;
 
                 // 创建新的音频缓冲区
                 const minPlaySamples = Math.min(
-                  this.queue.length,
+                  this.streamingContext.queue.length,
                   this.SAMPLE_RATE
                 ); // 最多播放1秒
-                const currentSamples = this.queue.splice(0, minPlaySamples);
+                const currentSamples = this.streamingContext.queue.splice(
+                  0,
+                  minPlaySamples
+                );
 
                 const audioBuffer = this.audioContext.createBuffer(
-                  CHANNELS,
+                  this.CHANNELS,
                   currentSamples.length,
                   this.SAMPLE_RATE
                 );
                 audioBuffer.copyToChannel(new Float32Array(currentSamples), 0);
 
                 // 创建音频源
-                this.source = this.audioContext.createBufferSource();
-                this.source.buffer = audioBuffer;
+                this.streamingContext.source =
+                  this.audioContext.createBufferSource();
+                this.streamingContext.source.buffer = audioBuffer;
 
                 // 创建增益节点用于平滑过渡
                 const gainNode = this.audioContext.createGain();
@@ -1996,10 +2007,11 @@ export default {
                 }
 
                 // 连接节点并开始播放
-                this.source.connect(gainNode);
+                this.streamingContext.source.connect(gainNode);
                 gainNode.connect(this.audioContext.destination);
 
-                this.lastPlayTime = this.audioContext.currentTime;
+                this.streamingContext.lastPlayTime =
+                  this.audioContext.currentTime;
                 console.log(
                   `开始播放 ${currentSamples.length} 个样本，约 ${(
                     currentSamples.length / this.SAMPLE_RATE
@@ -2008,19 +2020,19 @@ export default {
                 );
 
                 // 播放结束后的处理
-                this.source.onended = () => {
-                  this.source = null;
-                  this.playing = false;
+                this.streamingContext.source.onended = () => {
+                  this.streamingContext.source = null;
+                  this.streamingContext.playing = false;
 
                   // 如果队列中还有数据或者缓冲区有新数据，继续播放
-                  if (this.queue.length > 0) {
-                    setTimeout(() => this.startPlaying(), 10);
+                  if (this.streamingContext.queue.length > 0) {
+                    setTimeout(() => this.streamingContext.startPlaying(), 10);
                   } else if (this.audioBufferQueue.length > 0) {
                     // 缓冲区有新数据，进行解码
                     const frames = [...this.audioBufferQueue];
                     this.audioBufferQueue = [];
-                    this.decodeOpusFrames(frames);
-                  } else if (this.endOfStream) {
+                    this.streamingContext.decodeOpusFrames(frames);
+                  } else if (this.streamingContext.endOfStream) {
                     // 流已结束且没有更多数据
                     console.log("音频播放完成", "info");
                     this.isAudioPlaying = false;
@@ -2030,12 +2042,12 @@ export default {
                     setTimeout(() => {
                       // 如果仍然没有新数据，但有更多的包到达
                       if (
-                        this.queue.length === 0 &&
+                        this.streamingContext.queue.length === 0 &&
                         this.audioBufferQueue.length > 0
                       ) {
                         const frames = [...this.audioBufferQueue];
                         this.audioBufferQueue = [];
-                        this.decodeOpusFrames(frames);
+                        this.streamingContext.decodeOpusFrames(frames);
                       } else if (
                         this.queue.length === 0 &&
                         this.audioBufferQueue.length === 0
@@ -2049,7 +2061,7 @@ export default {
                   }
                 };
 
-                this.source.start();
+                this.streamingContext.source.start();
               },
             };
           }
@@ -2069,6 +2081,15 @@ export default {
 
       // 执行初始化和播放
       initDecoderAndPlay();
+    },
+    // 将Int16音频数据转换为Float32音频数据
+    convertInt16ToFloat32(int16Data) {
+      const float32Data = new Float32Array(int16Data.length);
+      for (let i = 0; i < int16Data.length; i++) {
+        // 将[-32768,32767]范围转换为[-1,1]
+        float32Data[i] = int16Data[i] / (int16Data[i] < 0 ? 0x8000 : 0x7fff);
+      }
+      return float32Data;
     },
   },
 };
