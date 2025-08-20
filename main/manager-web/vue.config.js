@@ -11,7 +11,7 @@ const { InjectManifest } = require('workbox-webpack-plugin');
 // 引入 path 模块
 
 const path = require('path')
- 
+
 function resolve(dir) {
   return path.join(__dirname, dir)
 }
@@ -44,7 +44,7 @@ module.exports = defineConfig({
     port: 8001, // 指定端口为 8001
     proxy: {
       '/xiaozhi': {
-        target: 'http://127.0.0.1:8002',
+        target: 'http://192.168.197.207:8002',
         changeOrigin: true
       }
     },
